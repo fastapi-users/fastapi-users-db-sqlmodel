@@ -1,0 +1,30 @@
+[build-system]
+requires = ["flit_core >=2,<3"]
+build-backend = "flit_core.buildapi"
+
+[tool.flit.metadata]
+module = "fastapi_users_db_sqlmodel"
+dist-name = "fastapi-users-db-sqlmodel"
+author = "François Voron"
+author-email = "fvoron@gmail.com"
+home-page = "https://github.com/fastapi-users/fastapi-users-db-sqlmodel"
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Development Status :: 5 - Production/Stable",
+    "Framework :: AsyncIO",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Internet :: WWW/HTTP :: Session",
+]
+description-file = "README.md"
+requires-python = ">=3.7"
+requires = [
+    "fastapi-users >= 6.1.2",
+    "sqlmodel >=0.0.4,<0.1.0",
+]
+
+[tool.flit.metadata.urls]
+Documentation = "https://fastapi-users.github.io/fastapi-users"

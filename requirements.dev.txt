@@ -1,0 +1,18 @@
+-r requirements.txt
+
+flake8
+pytest
+requests
+isort
+pytest-asyncio
+flake8-docstrings
+black
+mypy
+codecov
+pytest-cov
+pytest-mock
+asynctest
+flit
+bumpversion
+httpx
+asgi_lifespan
