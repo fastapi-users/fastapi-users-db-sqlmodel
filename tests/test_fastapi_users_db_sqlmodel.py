@@ -73,7 +73,8 @@ async def test_queries(sqlmodel_user_db: SQLModelUserDatabase[UserDB, OAuthAccou
 
     # Exception when inserting non-nullable fields
     with pytest.raises(exc.IntegrityError):
-        wrong_user = UserDB(hashed_password="aaa")
+        wrong_user = UserDB(email="lancelot@camelot.bt", hashed_password="aaa")
+        wrong_user.email = None  # type: ignore
         await sqlmodel_user_db.create(wrong_user)
 
     # Unknown user
@@ -125,7 +126,6 @@ async def test_queries_oauth(
     # Create
     user_db = await sqlmodel_user_db_oauth.create(user)
     assert user_db.id is not None
-    print(type(user_db), user_db)
     assert hasattr(user_db, "oauth_accounts")
     assert len(user_db.oauth_accounts) == 2
 
