@@ -8,7 +8,7 @@ from pydantic import UUID4, EmailStr
 from sqlalchemy.future import Engine
 from sqlmodel import Field, Session, SQLModel, func, select
 
-__version__ = "0.0.0"
+__version__ = "0.0.1"
 
 
 class SQLModelBaseUserDB(BaseUserDB, SQLModel):
