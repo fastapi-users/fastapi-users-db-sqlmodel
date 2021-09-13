@@ -2,32 +2,71 @@ from typing import AsyncGenerator
 
 import pytest
 from sqlalchemy import exc
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.future import Engine
 from sqlmodel import SQLModel, create_engine
 
-from fastapi_users_db_sqlmodel import NotSetOAuthAccountTableError, SQLModelUserDatabase
+from fastapi_users_db_sqlmodel import (
+    NotSetOAuthAccountTableError,
+    SQLModelUserDatabase,
+    SQLModelUserDatabaseAsync,
+)
 from tests.conftest import OAuthAccount, UserDB, UserDBOAuth
 
 
-@pytest.fixture
-async def sqlmodel_user_db() -> AsyncGenerator[SQLModelUserDatabase, None]:
-    DATABASE_URL = "sqlite:///./test-sqlmodel-user.db"
-    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+async def init_sync_engine(url: str) -> AsyncGenerator[Engine, None]:
+    engine = create_engine(url, connect_args={"check_same_thread": False})
     SQLModel.metadata.create_all(engine)
-
-    yield SQLModelUserDatabase(UserDB, engine)
-
+    yield engine
     SQLModel.metadata.drop_all(engine)
 
 
-@pytest.fixture
-async def sqlmodel_user_db_oauth() -> AsyncGenerator[SQLModelUserDatabase, None]:
-    DATABASE_URL = "sqlite:///./test-sqlmodel-user-oauth.db"
-    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-    SQLModel.metadata.create_all(engine)
+async def init_async_engine(url: str) -> AsyncGenerator[AsyncEngine, None]:
+    engine = create_async_engine(url, connect_args={"check_same_thread": False})
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
+        yield engine
+        await conn.run_sync(SQLModel.metadata.drop_all)
 
-    yield SQLModelUserDatabase(UserDBOAuth, engine, OAuthAccount)
 
-    SQLModel.metadata.drop_all(engine)
+@pytest.fixture(
+    params=[
+        (init_sync_engine, "sqlite:///./test-sqlmodel-user.db", SQLModelUserDatabase),
+        (
+            init_async_engine,
+            "sqlite+aiosqlite:///./test-sqlmodel-user.db",
+            SQLModelUserDatabaseAsync,
+        ),
+    ]
+)
+async def sqlmodel_user_db(request) -> AsyncGenerator[SQLModelUserDatabase, None]:
+    create_engine = request.param[0]
+    database_url = request.param[1]
+    database_class = request.param[2]
+    async for engine in create_engine(database_url):
+        yield database_class(UserDB, engine)
+
+
+@pytest.fixture(
+    params=[
+        (
+            init_sync_engine,
+            "sqlite:///./test-sqlmodel-user-oauth.db",
+            SQLModelUserDatabase,
+        ),
+        (
+            init_async_engine,
+            "sqlite+aiosqlite:///./test-sqlmodel-user-oauth.db",
+            SQLModelUserDatabaseAsync,
+        ),
+    ]
+)
+async def sqlmodel_user_db_oauth(request) -> AsyncGenerator[SQLModelUserDatabase, None]:
+    create_engine = request.param[0]
+    database_url = request.param[1]
+    database_class = request.param[2]
+    async for engine in create_engine(database_url):
+        yield database_class(UserDBOAuth, engine, OAuthAccount)
 
 
 @pytest.mark.asyncio

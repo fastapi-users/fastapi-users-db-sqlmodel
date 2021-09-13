@@ -1,11 +1,13 @@
 """FastAPI Users database adapter for SQLModel."""
 import uuid
-from typing import Generic, Optional, Type, TypeVar
+from typing import Callable, Generic, Optional, Type, TypeVar
 
 from fastapi_users.db.base import BaseUserDatabase
 from fastapi_users.models import BaseOAuthAccount, BaseUserDB
 from pydantic import UUID4, EmailStr
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from sqlalchemy.future import Engine
+from sqlalchemy.orm import selectinload, sessionmaker
 from sqlmodel import Field, Session, SQLModel, func, select
 
 __version__ = "0.0.1"
@@ -120,3 +122,91 @@ class SQLModelUserDatabase(Generic[UD, OA], BaseUserDatabase[UD]):
         with Session(self.engine) as session:
             session.delete(user)
             session.commit()
+
+
+class SQLModelUserDatabaseAsync(Generic[UD, OA], BaseUserDatabase[UD]):
+    """
+    Database adapter for SQLModel working purely asynchronously.
+
+    :param user_db_model: SQLModel model of a DB representation of a user.
+    :param engine: SQLAlchemy async engine.
+    """
+
+    engine: AsyncEngine
+    oauth_account_model: Optional[Type[OA]]
+
+    def __init__(
+        self,
+        user_db_model: Type[UD],
+        engine: AsyncEngine,
+        oauth_account_model: Optional[Type[OA]] = None,
+    ):
+        super().__init__(user_db_model)
+        self.engine = engine
+        self.oauth_account_model = oauth_account_model
+        self.session_maker: Callable[[], AsyncSession] = sessionmaker(
+            self.engine, class_=AsyncSession, expire_on_commit=False
+        )
+
+    async def get(self, id: UUID4) -> Optional[UD]:
+        """Get a single user by id."""
+        async with self.session_maker() as session:
+            return await session.get(self.user_db_model, id)
+
+    async def get_by_email(self, email: str) -> Optional[UD]:
+        """Get a single user by email."""
+        async with self.session_maker() as session:
+            statement = select(self.user_db_model).where(
+                func.lower(self.user_db_model.email) == func.lower(email)
+            )
+            results = await session.execute(statement)
+            object = results.first()
+            if object is None:
+                return None
+            return object[0]
+
+    async def get_by_oauth_account(self, oauth: str, account_id: str) -> Optional[UD]:
+        """Get a single user by OAuth account id."""
+        if not self.oauth_account_model:
+            raise NotSetOAuthAccountTableError()
+        async with self.session_maker() as session:
+            statement = (
+                select(self.oauth_account_model)
+                .where(self.oauth_account_model.oauth_name == oauth)
+                .where(self.oauth_account_model.account_id == account_id)
+                .options(selectinload(self.oauth_account_model.user))  # type: ignore
+            )
+            results = await session.execute(statement)
+            oauth_account = results.first()
+            if oauth_account:
+                user = oauth_account[0].user
+                return user
+            return None
+
+    async def create(self, user: UD) -> UD:
+        """Create a user."""
+        async with self.session_maker() as session:
+            session.add(user)
+            if self.oauth_account_model is not None:
+                for oauth_account in user.oauth_accounts:  # type: ignore
+                    session.add(oauth_account)
+            await session.commit()
+            await session.refresh(user)
+            return user
+
+    async def update(self, user: UD) -> UD:
+        """Update a user."""
+        async with self.session_maker() as session:
+            session.add(user)
+            if self.oauth_account_model is not None:
+                for oauth_account in user.oauth_accounts:  # type: ignore
+                    session.add(oauth_account)
+            await session.commit()
+            await session.refresh(user)
+            return user
+
+    async def delete(self, user: UD) -> None:
+        """Delete a user."""
+        async with self.session_maker() as session:
+            await session.delete(user)
+            await session.commit()

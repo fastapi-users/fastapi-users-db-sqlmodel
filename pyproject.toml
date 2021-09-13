@@ -22,7 +22,7 @@ classifiers = [
 description-file = "README.md"
 requires-python = ">=3.7"
 requires = [
-    "fastapi-users >= 6.1.2",
+    "fastapi-users >= 7.0.0",
     "sqlmodel >=0.0.4,<0.1.0",
 ]
 
