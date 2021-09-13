@@ -10,7 +10,7 @@ from sqlalchemy.future import Engine
 from sqlalchemy.orm import selectinload, sessionmaker
 from sqlmodel import Field, Session, SQLModel, func, select
 
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 
 
 class SQLModelBaseUserDB(BaseUserDB, SQLModel):
