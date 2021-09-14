@@ -1,3 +1,4 @@
+import uuid
 from typing import AsyncGenerator
 
 import pytest
@@ -13,6 +14,8 @@ from fastapi_users_db_sqlmodel import (
 )
 from tests.conftest import OAuthAccount, UserDB, UserDBOAuth
 
+
+safe_uuid = uuid.UUID("a9089e5d-2642-406d-a7c0-cbc641aca0ec")
 
 async def init_sync_engine(url: str) -> AsyncGenerator[Engine, None]:
     engine = create_engine(url, connect_args={"check_same_thread": False})
@@ -73,6 +76,7 @@ async def sqlmodel_user_db_oauth(request) -> AsyncGenerator[SQLModelUserDatabase
 @pytest.mark.db
 async def test_queries(sqlmodel_user_db: SQLModelUserDatabase[UserDB, OAuthAccount]):
     user = UserDB(
+        id=safe_uuid,
         email="lancelot@camelot.bt",
         hashed_password="guinevere",
     )
@@ -107,12 +111,12 @@ async def test_queries(sqlmodel_user_db: SQLModelUserDatabase[UserDB, OAuthAccou
     # Exception when inserting existing email
     with pytest.raises(exc.IntegrityError):
         await sqlmodel_user_db.create(
-            UserDB(email=user_db.email, hashed_password="guinevere")
+            UserDB(id=safe_uuid, email=user_db.email, hashed_password="guinevere")
         )
 
     # Exception when inserting non-nullable fields
     with pytest.raises(exc.IntegrityError):
-        wrong_user = UserDB(email="lancelot@camelot.bt", hashed_password="aaa")
+        wrong_user = UserDB(id=safe_uuid, email="lancelot@camelot.bt", hashed_password="aaa")
         wrong_user.email = None  # type: ignore
         await sqlmodel_user_db.create(wrong_user)
 
@@ -137,6 +141,7 @@ async def test_queries_custom_fields(
 ):
     """It should output custom fields in query result."""
     user = UserDB(
+        id=safe_uuid,
         email="lancelot@camelot.bt",
         hashed_password="guinevere",
         first_name="Lancelot",
@@ -157,6 +162,7 @@ async def test_queries_oauth(
     oauth_account2,
 ):
     user = UserDBOAuth(
+        id=safe_uuid,
         email="lancelot@camelot.bt",
         hashed_password="guinevere",
         oauth_accounts=[oauth_account1, oauth_account2],
