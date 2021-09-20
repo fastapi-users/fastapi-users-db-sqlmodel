@@ -3,9 +3,9 @@ from typing import AsyncGenerator
 
 import pytest
 from sqlalchemy import exc
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
-from sqlalchemy.future import Engine
-from sqlmodel import SQLModel, create_engine
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
+from sqlmodel import SQLModel, create_engine, Session
 
 from fastapi_users_db_sqlmodel import (
     NotSetOAuthAccountTableError,
@@ -17,59 +17,65 @@ from tests.conftest import OAuthAccount, UserDB, UserDBOAuth
 
 safe_uuid = uuid.UUID("a9089e5d-2642-406d-a7c0-cbc641aca0ec")
 
-async def init_sync_engine(url: str) -> AsyncGenerator[Engine, None]:
+
+async def init_sync_session(url: str) -> AsyncGenerator[Session, None]:
     engine = create_engine(url, connect_args={"check_same_thread": False})
     SQLModel.metadata.create_all(engine)
-    yield engine
+    with Session(engine) as session:
+        yield session
     SQLModel.metadata.drop_all(engine)
 
 
-async def init_async_engine(url: str) -> AsyncGenerator[AsyncEngine, None]:
+async def init_async_session(url: str) -> AsyncGenerator[AsyncSession, None]:
     engine = create_async_engine(url, connect_args={"check_same_thread": False})
+    make_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
-        yield engine
+        async with make_session() as session:
+            yield session
         await conn.run_sync(SQLModel.metadata.drop_all)
 
 
 @pytest.fixture(
     params=[
-        (init_sync_engine, "sqlite:///./test-sqlmodel-user.db", SQLModelUserDatabase),
+        (init_sync_session, "sqlite:///./test-sqlmodel-user.db", SQLModelUserDatabase),
         (
-            init_async_engine,
+            init_async_session,
             "sqlite+aiosqlite:///./test-sqlmodel-user.db",
             SQLModelUserDatabaseAsync,
         ),
-    ]
+    ],
+    ids=["sync", "async"],
 )
 async def sqlmodel_user_db(request) -> AsyncGenerator[SQLModelUserDatabase, None]:
-    create_engine = request.param[0]
+    create_session = request.param[0]
     database_url = request.param[1]
     database_class = request.param[2]
-    async for engine in create_engine(database_url):
-        yield database_class(UserDB, engine)
+    async for session in create_session(database_url):
+        yield database_class(UserDB, session)
 
 
 @pytest.fixture(
     params=[
         (
-            init_sync_engine,
+            init_sync_session,
             "sqlite:///./test-sqlmodel-user-oauth.db",
             SQLModelUserDatabase,
         ),
         (
-            init_async_engine,
+            init_async_session,
             "sqlite+aiosqlite:///./test-sqlmodel-user-oauth.db",
             SQLModelUserDatabaseAsync,
         ),
-    ]
+    ],
+    ids=["sync", "async"],
 )
 async def sqlmodel_user_db_oauth(request) -> AsyncGenerator[SQLModelUserDatabase, None]:
-    create_engine = request.param[0]
+    create_session = request.param[0]
     database_url = request.param[1]
     database_class = request.param[2]
-    async for engine in create_engine(database_url):
-        yield database_class(UserDBOAuth, engine, OAuthAccount)
+    async for session in create_session(database_url):
+        yield database_class(UserDBOAuth, session, OAuthAccount)
 
 
 @pytest.mark.asyncio
@@ -108,18 +114,6 @@ async def test_queries(sqlmodel_user_db: SQLModelUserDatabase[UserDB, OAuthAccou
     assert email_user is not None
     assert email_user.id == user_db.id
 
-    # Exception when inserting existing email
-    with pytest.raises(exc.IntegrityError):
-        await sqlmodel_user_db.create(
-            UserDB(id=safe_uuid, email=user_db.email, hashed_password="guinevere")
-        )
-
-    # Exception when inserting non-nullable fields
-    with pytest.raises(exc.IntegrityError):
-        wrong_user = UserDB(id=safe_uuid, email="lancelot@camelot.bt", hashed_password="aaa")
-        wrong_user.email = None  # type: ignore
-        await sqlmodel_user_db.create(wrong_user)
-
     # Unknown user
     unknown_user = await sqlmodel_user_db.get_by_email("galahad@camelot.bt")
     assert unknown_user is None
@@ -132,6 +126,37 @@ async def test_queries(sqlmodel_user_db: SQLModelUserDatabase[UserDB, OAuthAccou
     # Exception when trying to get by OAuth account
     with pytest.raises(NotSetOAuthAccountTableError):
         await sqlmodel_user_db.get_by_oauth_account("foo", "bar")
+
+
+@pytest.mark.asyncio
+@pytest.mark.db
+async def test_insert_existing_email(
+    sqlmodel_user_db: SQLModelUserDatabase[UserDB, OAuthAccount]
+):
+    user = UserDB(
+        id=safe_uuid,
+        email="lancelot@camelot.bt",
+        hashed_password="guinevere",
+    )
+    await sqlmodel_user_db.create(user)
+
+    with pytest.raises(exc.IntegrityError):
+        await sqlmodel_user_db.create(
+            UserDB(id=safe_uuid, email=user.email, hashed_password="guinevere")
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.db
+async def test_insert_non_nullable_fields(
+    sqlmodel_user_db: SQLModelUserDatabase[UserDB, OAuthAccount]
+):
+    with pytest.raises(exc.IntegrityError):
+        wrong_user = UserDB(
+            id=safe_uuid, email="lancelot@camelot.bt", hashed_password="aaa"
+        )
+        wrong_user.email = None  # type: ignore
+        await sqlmodel_user_db.create(wrong_user)
 
 
 @pytest.mark.asyncio
