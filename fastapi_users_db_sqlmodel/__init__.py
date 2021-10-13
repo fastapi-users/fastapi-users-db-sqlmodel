@@ -13,8 +13,14 @@ __version__ = "0.0.4"
 
 
 class SQLModelBaseUserDB(BaseUserDB, SQLModel):
-    id: UUID4 = Field(default_factory=uuid.uuid4, primary_key=True)
-    email: EmailStr = Field(sa_column_kwargs={"unique": True, "index": True})
+    id: UUID4 = Field(default_factory=uuid.uuid4, primary_key=True, nullable=False)
+    email: EmailStr = Field(
+        sa_column_kwargs={"unique": True, "index": True}, nullable=False
+    )
+
+    is_active: bool = Field(True, nullable=False)
+    is_superuser: bool = Field(False, nullable=False)
+    is_verified: bool = Field(False, nullable=False)
 
     class Config:
         orm_mode = True
