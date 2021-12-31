@@ -19,7 +19,12 @@ class SQLModelBaseAccessToken(BaseAccessToken, SQLModel):
     token: str = Field(
         sa_column=Column("token", types.String(length=43), primary_key=True)
     )
-    created_at: datetime = Field(default_factory=now_utc, nullable=False)
+    created_at: datetime = Field(
+        default_factory=now_utc,
+        sa_column=Column(
+            "created_at", types.DateTime(timezone=True), nullable=False, index=True
+        ),
+    )
     user_id: UUID4 = Field(foreign_key="user.id", nullable=False)
 
     class Config:
