@@ -3,9 +3,9 @@ from typing import AsyncGenerator
 
 import pytest
 from sqlalchemy import exc
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
-from sqlmodel import SQLModel, create_engine, Session
+from sqlmodel import Session, SQLModel, create_engine
 
 from fastapi_users_db_sqlmodel import (
     NotSetOAuthAccountTableError,
@@ -13,7 +13,6 @@ from fastapi_users_db_sqlmodel import (
     SQLModelUserDatabaseAsync,
 )
 from tests.conftest import OAuthAccount, UserDB, UserDBOAuth
-
 
 safe_uuid = uuid.UUID("a9089e5d-2642-406d-a7c0-cbc641aca0ec")
 

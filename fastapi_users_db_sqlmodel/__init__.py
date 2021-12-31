@@ -13,6 +13,8 @@ __version__ = "0.0.6"
 
 
 class SQLModelBaseUserDB(BaseUserDB, SQLModel):
+    __tablename__ = "user"
+
     id: UUID4 = Field(default_factory=uuid.uuid4, primary_key=True, nullable=False)
     email: EmailStr = Field(
         sa_column_kwargs={"unique": True, "index": True}, nullable=False
@@ -27,7 +29,10 @@ class SQLModelBaseUserDB(BaseUserDB, SQLModel):
 
 
 class SQLModelBaseOAuthAccount(BaseOAuthAccount, SQLModel):
+    __tablename__ = "oauthaccount"
+
     id: UUID4 = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: UUID4 = Field(foreign_key="user.id", nullable=False)
 
     class Config:
         orm_mode = True
@@ -128,7 +133,7 @@ class SQLModelUserDatabaseAsync(Generic[UD, OA], BaseUserDatabase[UD]):
     Database adapter for SQLModel working purely asynchronously.
 
     :param user_db_model: SQLModel model of a DB representation of a user.
-    :param engine: SQLAlchemy async engine.
+    :param session: SQLAlchemy async session.
     """
 
     session: AsyncSession

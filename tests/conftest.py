@@ -1,4 +1,5 @@
 import asyncio
+import uuid
 from typing import List, Optional
 
 import pytest
@@ -31,7 +32,7 @@ class UserOAuth(User):
 
 
 class UserDBOAuth(SQLModelBaseUserDB, table=True):
-    __tablename__ = "user"
+    __tablename__ = "user_oauth"
     oauth_accounts: List["OAuthAccount"] = Relationship(
         back_populates="user",
         sa_relationship_kwargs={"lazy": "joined", "cascade": "all, delete"},
@@ -39,7 +40,7 @@ class UserDBOAuth(SQLModelBaseUserDB, table=True):
 
 
 class OAuthAccount(SQLModelBaseOAuthAccount, table=True):
-    user_id: UUID4 = Field(foreign_key="user.id")
+    user_id: UUID4 = Field(foreign_key="user_oauth.id")
     user: Optional[UserDBOAuth] = Relationship(back_populates="oauth_accounts")
 
 
@@ -53,6 +54,7 @@ def event_loop():
 @pytest.fixture
 def oauth_account1() -> OAuthAccount:
     return OAuthAccount(
+        id=uuid.UUID("b9089e5d-2642-406d-a7c0-cbc641aca0ec"),
         oauth_name="service1",
         access_token="TOKEN",
         expires_at=1579000751,
@@ -64,6 +66,7 @@ def oauth_account1() -> OAuthAccount:
 @pytest.fixture
 def oauth_account2() -> OAuthAccount:
     return OAuthAccount(
+        id=uuid.UUID("c9089e5d-2642-406d-a7c0-cbc641aca0ec"),
         oauth_name="service2",
         access_token="TOKEN",
         expires_at=1579000751,
