@@ -1,3 +1,4 @@
 aiosqlite >= 0.17.0
 fastapi-users >= 9.1.0
 sqlmodel
+sqlalchemy[asyncio] >=1.4,<1.4.36
