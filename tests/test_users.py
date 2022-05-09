@@ -1,18 +1,16 @@
 import uuid
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator, Dict
 
 import pytest
+import pytest_asyncio
+from pydantic import UUID4
 from sqlalchemy import exc
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import Session, SQLModel, create_engine
 
-from fastapi_users_db_sqlmodel import (
-    NotSetOAuthAccountTableError,
-    SQLModelUserDatabase,
-    SQLModelUserDatabaseAsync,
-)
-from tests.conftest import OAuthAccount, UserDB, UserDBOAuth
+from fastapi_users_db_sqlmodel import SQLModelUserDatabase, SQLModelUserDatabaseAsync
+from tests.conftest import OAuthAccount, User, UserOAuth
 
 safe_uuid = uuid.UUID("a9089e5d-2642-406d-a7c0-cbc641aca0ec")
 
@@ -35,7 +33,7 @@ async def init_async_session(url: str) -> AsyncGenerator[AsyncSession, None]:
         await conn.run_sync(SQLModel.metadata.drop_all)
 
 
-@pytest.fixture(
+@pytest_asyncio.fixture(
     params=[
         (init_sync_session, "sqlite:///./test-sqlmodel-user.db", SQLModelUserDatabase),
         (
@@ -51,10 +49,10 @@ async def sqlmodel_user_db(request) -> AsyncGenerator[SQLModelUserDatabase, None
     database_url = request.param[1]
     database_class = request.param[2]
     async for session in create_session(database_url):
-        yield database_class(UserDB, session)
+        yield database_class(session, User)
 
 
-@pytest.fixture(
+@pytest_asyncio.fixture(
     params=[
         (
             init_sync_session,
@@ -74,44 +72,42 @@ async def sqlmodel_user_db_oauth(request) -> AsyncGenerator[SQLModelUserDatabase
     database_url = request.param[1]
     database_class = request.param[2]
     async for session in create_session(database_url):
-        yield database_class(UserDBOAuth, session, OAuthAccount)
+        yield database_class(session, UserOAuth, OAuthAccount)
 
 
 @pytest.mark.asyncio
-@pytest.mark.db
-async def test_queries(sqlmodel_user_db: SQLModelUserDatabase[UserDB, OAuthAccount]):
-    user = UserDB(
-        id=safe_uuid,
-        email="lancelot@camelot.bt",
-        hashed_password="guinevere",
-    )
+async def test_queries(sqlmodel_user_db: SQLModelUserDatabase[User, UUID4]):
+    user_create = {
+        "email": "lancelot@camelot.bt",
+        "hashed_password": "guinevere",
+    }
 
     # Create
-    user_db = await sqlmodel_user_db.create(user)
-    assert user_db.id is not None
-    assert user_db.is_active is True
-    assert user_db.is_superuser is False
-    assert user_db.email == user.email
+    user = await sqlmodel_user_db.create(user_create)
+    assert user.id is not None
+    assert user.is_active is True
+    assert user.is_superuser is False
+    assert user.email == user_create["email"]
 
     # Update
-    user_db.is_superuser = True
-    await sqlmodel_user_db.update(user_db)
+    updated_user = await sqlmodel_user_db.update(user, {"is_superuser": True})
+    assert updated_user.is_superuser is True
 
     # Get by id
     id_user = await sqlmodel_user_db.get(user.id)
     assert id_user is not None
-    assert id_user.id == user_db.id
+    assert id_user.id == user.id
     assert id_user.is_superuser is True
 
     # Get by email
-    email_user = await sqlmodel_user_db.get_by_email(str(user.email))
+    email_user = await sqlmodel_user_db.get_by_email(str(user_create["email"]))
     assert email_user is not None
-    assert email_user.id == user_db.id
+    assert email_user.id == user.id
 
     # Get by uppercased email
     email_user = await sqlmodel_user_db.get_by_email("Lancelot@camelot.bt")
     assert email_user is not None
-    assert email_user.id == user_db.id
+    assert email_user.id == user.id
 
     # Unknown user
     unknown_user = await sqlmodel_user_db.get_by_email("galahad@camelot.bt")
@@ -122,55 +118,41 @@ async def test_queries(sqlmodel_user_db: SQLModelUserDatabase[UserDB, OAuthAccou
     deleted_user = await sqlmodel_user_db.get(user.id)
     assert deleted_user is None
 
-    # Exception when trying to get by OAuth account
-    with pytest.raises(NotSetOAuthAccountTableError):
+    # OAuth without defined table
+    with pytest.raises(NotImplementedError):
         await sqlmodel_user_db.get_by_oauth_account("foo", "bar")
+    with pytest.raises(NotImplementedError):
+        await sqlmodel_user_db.add_oauth_account(user, {})
+    with pytest.raises(NotImplementedError):
+        oauth_account = OAuthAccount()
+        await sqlmodel_user_db.update_oauth_account(user, oauth_account, {})
 
 
 @pytest.mark.asyncio
-@pytest.mark.db
 async def test_insert_existing_email(
-    sqlmodel_user_db: SQLModelUserDatabase[UserDB, OAuthAccount]
+    sqlmodel_user_db: SQLModelUserDatabase[User, UUID4]
 ):
-    user = UserDB(
-        id=safe_uuid,
-        email="lancelot@camelot.bt",
-        hashed_password="guinevere",
-    )
-    await sqlmodel_user_db.create(user)
+    user_create = {
+        "email": "lancelot@camelot.bt",
+        "hashed_password": "guinevere",
+    }
+    await sqlmodel_user_db.create(user_create)
 
     with pytest.raises(exc.IntegrityError):
-        await sqlmodel_user_db.create(
-            UserDB(id=safe_uuid, email=user.email, hashed_password="guinevere")
-        )
+        await sqlmodel_user_db.create(user_create)
 
 
 @pytest.mark.asyncio
-@pytest.mark.db
-async def test_insert_non_nullable_fields(
-    sqlmodel_user_db: SQLModelUserDatabase[UserDB, OAuthAccount]
-):
-    with pytest.raises(exc.IntegrityError):
-        wrong_user = UserDB(
-            id=safe_uuid, email="lancelot@camelot.bt", hashed_password="aaa"
-        )
-        wrong_user.email = None  # type: ignore
-        await sqlmodel_user_db.create(wrong_user)
-
-
-@pytest.mark.asyncio
-@pytest.mark.db
 async def test_queries_custom_fields(
-    sqlmodel_user_db: SQLModelUserDatabase[UserDB, OAuthAccount],
+    sqlmodel_user_db: SQLModelUserDatabase[User, UUID4],
 ):
     """It should output custom fields in query result."""
-    user = UserDB(
-        id=safe_uuid,
-        email="lancelot@camelot.bt",
-        hashed_password="guinevere",
-        first_name="Lancelot",
-    )
-    await sqlmodel_user_db.create(user)
+    user_create = {
+        "email": "lancelot@camelot.bt",
+        "hashed_password": "guinevere",
+        "first_name": "Lancelot",
+    }
+    user = await sqlmodel_user_db.create(user_create)
 
     id_user = await sqlmodel_user_db.get(user.id)
     assert id_user is not None
@@ -179,48 +161,51 @@ async def test_queries_custom_fields(
 
 
 @pytest.mark.asyncio
-@pytest.mark.db
 async def test_queries_oauth(
-    sqlmodel_user_db_oauth: SQLModelUserDatabase[UserDBOAuth, OAuthAccount],
-    oauth_account1,
-    oauth_account2,
+    sqlmodel_user_db_oauth: SQLModelUserDatabase[UserOAuth, UUID4],
+    oauth_account1: Dict[str, Any],
+    oauth_account2: Dict[str, Any],
 ):
-    user = UserDBOAuth(
-        id=safe_uuid,
-        email="lancelot@camelot.bt",
-        hashed_password="guinevere",
-        oauth_accounts=[oauth_account1, oauth_account2],
-    )
+    user_create = {
+        "email": "lancelot@camelot.bt",
+        "hashed_password": "guinevere",
+    }
 
     # Create
-    user_db = await sqlmodel_user_db_oauth.create(user)
-    assert user_db.id is not None
-    assert hasattr(user_db, "oauth_accounts")
-    assert len(user_db.oauth_accounts) == 2
+    user = await sqlmodel_user_db_oauth.create(user_create)
+    assert user.id is not None
+
+    # Add OAuth account
+    user = await sqlmodel_user_db_oauth.add_oauth_account(user, oauth_account1)
+    user = await sqlmodel_user_db_oauth.add_oauth_account(user, oauth_account2)
+    assert len(user.oauth_accounts) == 2
+    assert user.oauth_accounts[1].account_id == oauth_account2["account_id"]
+    assert user.oauth_accounts[0].account_id == oauth_account1["account_id"]
 
     # Update
-    user_db.oauth_accounts[0].access_token = "NEW_TOKEN"
-    await sqlmodel_user_db_oauth.update(user_db)
+    user = await sqlmodel_user_db_oauth.update_oauth_account(
+        user, user.oauth_accounts[0], {"access_token": "NEW_TOKEN"}
+    )
+    assert user.oauth_accounts[0].access_token == "NEW_TOKEN"
 
     # Get by id
     id_user = await sqlmodel_user_db_oauth.get(user.id)
     assert id_user is not None
-    assert id_user.id == user_db.id
+    assert id_user.id == user.id
     assert id_user.oauth_accounts[0].access_token == "NEW_TOKEN"
 
     # Get by email
-    email_user = await sqlmodel_user_db_oauth.get_by_email(str(user.email))
+    email_user = await sqlmodel_user_db_oauth.get_by_email(user_create["email"])
     assert email_user is not None
-    assert email_user.id == user_db.id
+    assert email_user.id == user.id
     assert len(email_user.oauth_accounts) == 2
 
     # Get by OAuth account
     oauth_user = await sqlmodel_user_db_oauth.get_by_oauth_account(
-        oauth_account1.oauth_name, oauth_account1.account_id
+        oauth_account1["oauth_name"], oauth_account1["account_id"]
     )
     assert oauth_user is not None
     assert oauth_user.id == user.id
-    assert len(oauth_user.oauth_accounts) == 2
 
     # Unknown OAuth account
     unknown_oauth_user = await sqlmodel_user_db_oauth.get_by_oauth_account("foo", "bar")

@@ -1,19 +1,16 @@
-from datetime import datetime, timezone
-from typing import Generic, Optional, Type, TypeVar
+from datetime import datetime
+from typing import Any, Dict, Generic, Optional, Type
 
-from fastapi_users.authentication.strategy.db import AccessTokenDatabase
-from fastapi_users.authentication.strategy.db.models import BaseAccessToken
+from fastapi_users.authentication.strategy.db import AP, AccessTokenDatabase
 from pydantic import UUID4
 from sqlalchemy import Column, types
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import Field, Session, SQLModel, select
 
-
-def now_utc():
-    return datetime.now(timezone.utc)
+from fastapi_users_db_sqlmodel.generics import TIMESTAMPAware, now_utc
 
 
-class SQLModelBaseAccessToken(BaseAccessToken, SQLModel):
+class SQLModelBaseAccessToken(SQLModel):
     __tablename__ = "accesstoken"
 
     token: str = Field(
@@ -22,7 +19,7 @@ class SQLModelBaseAccessToken(BaseAccessToken, SQLModel):
     created_at: datetime = Field(
         default_factory=now_utc,
         sa_column=Column(
-            "created_at", types.DateTime(timezone=True), nullable=False, index=True
+            "created_at", TIMESTAMPAware(timezone=True), nullable=False, index=True
         ),
     )
     user_id: UUID4 = Field(foreign_key="user.id", nullable=False)
@@ -31,65 +28,68 @@ class SQLModelBaseAccessToken(BaseAccessToken, SQLModel):
         orm_mode = True
 
 
-A = TypeVar("A", bound=SQLModelBaseAccessToken)
-
-
-class SQLModelAccessTokenDatabase(Generic[A], AccessTokenDatabase[A]):
+class SQLModelAccessTokenDatabase(Generic[AP], AccessTokenDatabase[AP]):
     """
     Access token database adapter for SQLModel.
 
-    :param user_db_model: SQLModel model of a DB representation of an access token.
     :param session: SQLAlchemy session.
+    :param access_token_model: SQLModel access token model.
     """
 
-    def __init__(self, access_token_model: Type[A], session: Session):
-        self.access_token_model = access_token_model
+    def __init__(self, session: Session, access_token_model: Type[AP]):
         self.session = session
+        self.access_token_model = access_token_model
 
     async def get_by_token(
         self, token: str, max_age: Optional[datetime] = None
-    ) -> Optional[A]:
+    ) -> Optional[AP]:
         statement = select(self.access_token_model).where(
             self.access_token_model.token == token
         )
         if max_age is not None:
             statement = statement.where(self.access_token_model.created_at >= max_age)
 
-        results = self.session.exec(statement)
-        return results.first()
+        results = self.session.execute(statement)
+        access_token = results.first()
+        if access_token is None:
+            return None
+        return access_token[0]
 
-    async def create(self, access_token: A) -> A:
+    async def create(self, create_dict: Dict[str, Any]) -> AP:
+        access_token = self.access_token_model(**create_dict)
         self.session.add(access_token)
         self.session.commit()
         self.session.refresh(access_token)
         return access_token
 
-    async def update(self, access_token: A) -> A:
+    async def update(self, access_token: AP, update_dict: Dict[str, Any]) -> AP:
+        for key, value in update_dict.items():
+            setattr(access_token, key, value)
         self.session.add(access_token)
         self.session.commit()
         self.session.refresh(access_token)
         return access_token
 
-    async def delete(self, access_token: A) -> None:
+    async def delete(self, access_token: AP) -> None:
         self.session.delete(access_token)
         self.session.commit()
 
 
-class SQLModelAccessTokenDatabaseAsync(Generic[A], AccessTokenDatabase[A]):
+class SQLModelAccessTokenDatabaseAsync(Generic[AP], AccessTokenDatabase[AP]):
     """
     Access token database adapter for SQLModel working purely asynchronously.
 
-    :param user_db_model: SQLModel model of a DB representation of an access token.
     :param session: SQLAlchemy async session.
+    :param access_token_model: SQLModel access token model.
     """
 
-    def __init__(self, access_token_model: Type[A], session: AsyncSession):
-        self.access_token_model = access_token_model
+    def __init__(self, session: AsyncSession, access_token_model: Type[AP]):
         self.session = session
+        self.access_token_model = access_token_model
 
     async def get_by_token(
         self, token: str, max_age: Optional[datetime] = None
-    ) -> Optional[A]:
+    ) -> Optional[AP]:
         statement = select(self.access_token_model).where(
             self.access_token_model.token == token
         )
@@ -97,23 +97,26 @@ class SQLModelAccessTokenDatabaseAsync(Generic[A], AccessTokenDatabase[A]):
             statement = statement.where(self.access_token_model.created_at >= max_age)
 
         results = await self.session.execute(statement)
-        object = results.first()
-        if object is None:
+        access_token = results.first()
+        if access_token is None:
             return None
-        return object[0]
+        return access_token[0]
 
-    async def create(self, access_token: A) -> A:
+    async def create(self, create_dict: Dict[str, Any]) -> AP:
+        access_token = self.access_token_model(**create_dict)
         self.session.add(access_token)
         await self.session.commit()
         await self.session.refresh(access_token)
         return access_token
 
-    async def update(self, access_token: A) -> A:
+    async def update(self, access_token: AP, update_dict: Dict[str, Any]) -> AP:
+        for key, value in update_dict.items():
+            setattr(access_token, key, value)
         self.session.add(access_token)
         await self.session.commit()
         await self.session.refresh(access_token)
         return access_token
 
-    async def delete(self, access_token: A) -> None:
+    async def delete(self, access_token: AP) -> None:
         await self.session.delete(access_token)
         await self.session.commit()

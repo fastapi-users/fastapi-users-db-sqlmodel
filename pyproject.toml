@@ -22,7 +22,7 @@ classifiers = [
 description-file = "README.md"
 requires-python = ">=3.7"
 requires = [
-    "fastapi-users >= 9.1.0",
+    "fastapi-users >= 10.0.2",
     "sqlmodel",
     "sqlalchemy[asyncio] >=1.4,<1.4.36",  # Pin SQLAlchemy to prevent bug https://github.com/tiangolo/sqlmodel/issues/315
 ]

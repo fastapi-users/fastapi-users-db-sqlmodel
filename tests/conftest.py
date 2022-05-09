@@ -1,75 +1,55 @@
 import asyncio
-import uuid
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 import pytest
-from fastapi_users import models
 from pydantic import UUID4
 from sqlmodel import Field, Relationship
 
 from fastapi_users_db_sqlmodel import SQLModelBaseOAuthAccount, SQLModelBaseUserDB
 
 
-class User(models.BaseUser):
+class User(SQLModelBaseUserDB, table=True):
     first_name: Optional[str]
 
 
-class UserCreate(models.BaseUserCreate):
-    first_name: Optional[str]
-
-
-class UserUpdate(models.BaseUserUpdate):
-    pass
-
-
-class UserDB(SQLModelBaseUserDB, User, table=True):
-    class Config:
-        orm_mode = True
-
-
-class UserOAuth(User):
-    pass
-
-
-class UserDBOAuth(SQLModelBaseUserDB, table=True):
+class UserOAuth(SQLModelBaseUserDB, table=True):
     __tablename__ = "user_oauth"
     oauth_accounts: List["OAuthAccount"] = Relationship(
         back_populates="user",
-        sa_relationship_kwargs={"lazy": "joined", "cascade": "all, delete"},
+        sa_relationship_kwargs={"lazy": "selectin", "cascade": "all, delete"},
     )
 
 
 class OAuthAccount(SQLModelBaseOAuthAccount, table=True):
     user_id: UUID4 = Field(foreign_key="user_oauth.id")
-    user: Optional[UserDBOAuth] = Relationship(back_populates="oauth_accounts")
+    user: Optional[UserOAuth] = Relationship(back_populates="oauth_accounts")
 
 
 @pytest.fixture(scope="session")
 def event_loop():
     """Force the pytest-asyncio loop to be the main one."""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.new_event_loop()
     yield loop
+    loop.close()
 
 
 @pytest.fixture
-def oauth_account1() -> OAuthAccount:
-    return OAuthAccount(
-        id=uuid.UUID("b9089e5d-2642-406d-a7c0-cbc641aca0ec"),
-        oauth_name="service1",
-        access_token="TOKEN",
-        expires_at=1579000751,
-        account_id="user_oauth1",
-        account_email="king.arthur@camelot.bt",
-    )
+def oauth_account1() -> Dict[str, Any]:
+    return {
+        "oauth_name": "service1",
+        "access_token": "TOKEN",
+        "expires_at": 1579000751,
+        "account_id": "user_oauth1",
+        "account_email": "king.arthur@camelot.bt",
+    }
 
 
 @pytest.fixture
-def oauth_account2() -> OAuthAccount:
-    return OAuthAccount(
-        id=uuid.UUID("c9089e5d-2642-406d-a7c0-cbc641aca0ec"),
-        oauth_name="service2",
-        access_token="TOKEN",
-        expires_at=1579000751,
-        account_id="user_oauth2",
-        account_email="king.arthur@camelot.bt",
-    )
+def oauth_account2() -> Dict[str, Any]:
+    return {
+        "oauth_name": "service2",
+        "access_token": "TOKEN",
+        "expires_at": 1579000751,
+        "account_id": "user_oauth2",
+        "account_email": "king.arthur@camelot.bt",
+    }

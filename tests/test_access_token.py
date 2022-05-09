@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from typing import AsyncGenerator
 
 import pytest
+import pytest_asyncio
 from pydantic import UUID4
 from sqlalchemy import exc
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -15,7 +16,7 @@ from fastapi_users_db_sqlmodel.access_token import (
     SQLModelAccessTokenDatabaseAsync,
     SQLModelBaseAccessToken,
 )
-from tests.conftest import UserDB
+from tests.conftest import User
 
 
 class AccessToken(SQLModelBaseAccessToken, table=True):
@@ -45,7 +46,7 @@ async def init_async_session(url: str) -> AsyncGenerator[AsyncSession, None]:
         await conn.run_sync(SQLModel.metadata.drop_all)
 
 
-@pytest.fixture(
+@pytest_asyncio.fixture(
     params=[
         (
             init_sync_session,
@@ -70,46 +71,53 @@ async def sqlmodel_access_token_db(
     access_token_database_class = request.param[2]
     user_database_class = request.param[3]
     async for session in create_session(database_url):
-        user = UserDB(
-            id=user_id, email="lancelot@camelot.bt", hashed_password="guinevere"
+        user_db = user_database_class(session, User)
+        await user_db.create(
+            {
+                "id": user_id,
+                "email": "lancelot@camelot.bt",
+                "hashed_password": "guinevere",
+            }
         )
-        user_db = user_database_class(UserDB, session)
-        await user_db.create(user)
-        yield access_token_database_class(AccessToken, session)
+        yield access_token_database_class(session, AccessToken)
 
 
 @pytest.mark.asyncio
-@pytest.mark.db
 async def test_queries(
     sqlmodel_access_token_db: SQLModelAccessTokenDatabase[AccessToken],
     user_id: UUID4,
 ):
-    access_token = AccessToken(token="TOKEN", user_id=user_id)
+    access_token_create = {"token": "TOKEN", "user_id": user_id}
 
     # Create
-    access_token_db = await sqlmodel_access_token_db.create(access_token)
-    assert access_token_db.token == "TOKEN"
-    assert access_token_db.user_id == user_id
+    access_token = await sqlmodel_access_token_db.create(access_token_create)
+    assert access_token.token == "TOKEN"
+    assert access_token.user_id == user_id
 
     # Update
-    access_token_db.created_at = datetime.now(timezone.utc)
-    await sqlmodel_access_token_db.update(access_token_db)
+    update_dict = {"created_at": datetime.now(timezone.utc)}
+    updated_access_token = await sqlmodel_access_token_db.update(
+        access_token, update_dict
+    )
+    assert updated_access_token.created_at.replace(microsecond=0) == update_dict[
+        "created_at"
+    ].replace(microsecond=0)
 
     # Get by token
     access_token_by_token = await sqlmodel_access_token_db.get_by_token(
-        access_token_db.token
+        access_token.token
     )
     assert access_token_by_token is not None
 
     # Get by token expired
     access_token_by_token = await sqlmodel_access_token_db.get_by_token(
-        access_token_db.token, max_age=datetime.now(timezone.utc) + timedelta(hours=1)
+        access_token.token, max_age=datetime.now(timezone.utc) + timedelta(hours=1)
     )
     assert access_token_by_token is None
 
     # Get by token not expired
     access_token_by_token = await sqlmodel_access_token_db.get_by_token(
-        access_token_db.token, max_age=datetime.now(timezone.utc) - timedelta(hours=1)
+        access_token.token, max_age=datetime.now(timezone.utc) - timedelta(hours=1)
     )
     assert access_token_by_token is not None
 
@@ -120,22 +128,19 @@ async def test_queries(
     assert access_token_by_token is None
 
     # Delete token
-    await sqlmodel_access_token_db.delete(access_token_db)
+    await sqlmodel_access_token_db.delete(access_token)
     deleted_access_token = await sqlmodel_access_token_db.get_by_token(
-        access_token_db.token
+        access_token.token
     )
     assert deleted_access_token is None
 
 
 @pytest.mark.asyncio
-@pytest.mark.db
 async def test_insert_existing_token(
     sqlmodel_access_token_db: SQLModelAccessTokenDatabase[AccessToken], user_id: UUID4
 ):
-    access_token = AccessToken(token="TOKEN", user_id=user_id)
-    await sqlmodel_access_token_db.create(access_token)
+    access_token_create = {"token": "TOKEN", "user_id": user_id}
+    await sqlmodel_access_token_db.create(access_token_create)
 
     with pytest.raises(exc.IntegrityError):
-        await sqlmodel_access_token_db.create(
-            AccessToken(token="TOKEN", user_id=user_id)
-        )
+        await sqlmodel_access_token_db.create(access_token_create)
