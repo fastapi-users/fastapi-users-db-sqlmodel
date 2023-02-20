@@ -1,4 +1,4 @@
 aiosqlite >= 0.17.0
 fastapi-users >= 9.1.0
 git+https://github.com/andrewbolster/sqlmodel.git@patch-1
-sqlalchemy[asyncio] >=1.4,<1.4.36
+sqlalchemy[asyncio] >=1.4,<2.0.5
