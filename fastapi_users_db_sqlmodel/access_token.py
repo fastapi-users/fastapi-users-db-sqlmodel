@@ -43,7 +43,7 @@ class SQLModelAccessTokenDatabase(Generic[AP], AccessTokenDatabase[AP]):
     async def get_by_token(
         self, token: str, max_age: Optional[datetime] = None
     ) -> Optional[AP]:
-        statement = select(self.access_token_model).where(
+        statement = select(self.access_token_model).where(  # type: ignore
             self.access_token_model.token == token
         )
         if max_age is not None:
@@ -90,7 +90,7 @@ class SQLModelAccessTokenDatabaseAsync(Generic[AP], AccessTokenDatabase[AP]):
     async def get_by_token(
         self, token: str, max_age: Optional[datetime] = None
     ) -> Optional[AP]:
-        statement = select(self.access_token_model).where(
+        statement = select(self.access_token_model).where(  # type: ignore
             self.access_token_model.token == token
         )
         if max_age is not None:

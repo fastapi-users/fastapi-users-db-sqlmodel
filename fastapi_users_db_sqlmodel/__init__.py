@@ -75,7 +75,7 @@ class SQLModelUserDatabase(Generic[UP, ID], BaseUserDatabase[UP, ID]):
 
     async def get_by_email(self, email: str) -> Optional[UP]:
         """Get a single user by email."""
-        statement = select(self.user_model).where(
+        statement = select(self.user_model).where(  # type: ignore
             func.lower(self.user_model.email) == func.lower(email)
         )
         results = self.session.exec(statement)
@@ -171,7 +171,7 @@ class SQLModelUserDatabaseAsync(Generic[UP, ID], BaseUserDatabase[UP, ID]):
 
     async def get_by_email(self, email: str) -> Optional[UP]:
         """Get a single user by email."""
-        statement = select(self.user_model).where(
+        statement = select(self.user_model).where(  # type: ignore
             func.lower(self.user_model.email) == func.lower(email)
         )
         results = await self.session.execute(statement)

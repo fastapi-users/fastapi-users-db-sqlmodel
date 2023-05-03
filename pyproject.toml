@@ -1,30 +1,84 @@
-[build-system]
-requires = ["flit_core >=2,<3"]
-build-backend = "flit_core.buildapi"
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+addopts = "--ignore=test_build.py"
 
-[tool.flit.metadata]
-module = "fastapi_users_db_sqlmodel"
-dist-name = "fastapi-users-db-sqlmodel"
-author = "François Voron"
-author-email = "fvoron@gmail.com"
-home-page = "https://github.com/fastapi-users/fastapi-users-db-sqlmodel"
+[tool.ruff]
+extend-select = ["I"]
+
+[tool.hatch]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.version]
+source = "regex_commit"
+commit_extra_args = ["-e"]
+path = "fastapi_users_db_sqlmodel/__init__.py"
+
+[tool.hatch.envs.default]
+dependencies = [
+    "aiosqlite",
+    "pytest",
+    "pytest-asyncio",
+    "black",
+    "mypy",
+    "pytest-cov",
+    "pytest-mock",
+    "httpx",
+    "asgi_lifespan",
+    "ruff",
+]
+
+[tool.hatch.envs.default.scripts]
+test = "pytest --cov=fastapi_users_db_sqlmodel/ --cov-report=term-missing --cov-fail-under=100"
+test-cov-xml = "pytest --cov=fastapi_users_db_sqlmodel/ --cov-report=xml --cov-fail-under=100"
+lint = [
+  "black . ",
+  "ruff --fix .",
+  "mypy fastapi_users_db_sqlmodel/",
+]
+lint-check = [
+  "black --check .",
+  "ruff .",
+  "mypy fastapi_users_db_sqlmodel/",
+]
+
+[tool.hatch.build.targets.sdist]
+support-legacy = true  # Create setup.py
+
+[build-system]
+requires = ["hatchling", "hatch-regex-commit"]
+build-backend = "hatchling.build"
+
+[project]
+name = "fastapi-users-db-sqlmodel"
+authors = [
+    { name = "François Voron", email = "fvoron@gmail.com" },
+]
+description = "FastAPI Users database adapter for SQLModel"
+readme = "README.md"
+dynamic = ["version"]
 classifiers = [
     "License :: OSI Approved :: MIT License",
     "Development Status :: 5 - Production/Stable",
+    "Framework :: FastAPI",
     "Framework :: AsyncIO",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3.7",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3 :: Only",
     "Topic :: Internet :: WWW/HTTP :: Session",
 ]
-description-file = "README.md"
 requires-python = ">=3.7"
-requires = [
+dependencies = [
     "fastapi-users >= 10.0.2",
+    "greenlet",
     "sqlmodel",
 ]
 
-[tool.flit.metadata.urls]
+[project.urls]
 Documentation = "https://fastapi-users.github.io/fastapi-users"
+Source = "https://github.com/fastapi-users/fastapi-users-db-sqlmodel"
