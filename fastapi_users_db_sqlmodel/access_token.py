@@ -2,14 +2,15 @@ from datetime import datetime
 from typing import Any, Dict, Generic, Optional, Type
 
 from fastapi_users.authentication.strategy.db import AP, AccessTokenDatabase
-from pydantic import UUID4
+from pydantic import UUID4, ConfigDict
+from pydantic.version import VERSION as PYDANTIC_VERSION
 from sqlalchemy import Column, types
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import Field, Session, SQLModel, select
 
 from fastapi_users_db_sqlmodel.generics import TIMESTAMPAware, now_utc
 
-
+PYDANTIC_V2 = PYDANTIC_VERSION.startswith("2.")
 class SQLModelBaseAccessToken(SQLModel):
     __tablename__ = "accesstoken"
 
@@ -24,8 +25,11 @@ class SQLModelBaseAccessToken(SQLModel):
     )
     user_id: UUID4 = Field(foreign_key="user.id", nullable=False)
 
-    class Config:
-        orm_mode = True
+    if PYDANTIC_V2:  # pragma: no cover
+        model_config = ConfigDict(from_attributes=True)  # type: ignore
+    else:  # pragma: no cover
+        class Config:
+            orm_mode = True
 
 
 class SQLModelAccessTokenDatabase(Generic[AP], AccessTokenDatabase[AP]):
