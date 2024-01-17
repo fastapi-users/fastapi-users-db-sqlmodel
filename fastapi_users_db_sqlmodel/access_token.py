@@ -4,8 +4,8 @@ from typing import Any, Dict, Generic, Optional, Type
 from fastapi_users.authentication.strategy.db import AP, AccessTokenDatabase
 from pydantic import UUID4
 from sqlalchemy import Column, types
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import Field, Session, SQLModel, select
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from fastapi_users_db_sqlmodel.generics import TIMESTAMPAware, now_utc
 
@@ -49,11 +49,11 @@ class SQLModelAccessTokenDatabase(Generic[AP], AccessTokenDatabase[AP]):
         if max_age is not None:
             statement = statement.where(self.access_token_model.created_at >= max_age)
 
-        results = self.session.execute(statement)
+        results = self.session.exec(statement)
         access_token = results.first()
         if access_token is None:
             return None
-        return access_token[0]
+        return access_token
 
     async def create(self, create_dict: Dict[str, Any]) -> AP:
         access_token = self.access_token_model(**create_dict)
@@ -96,11 +96,11 @@ class SQLModelAccessTokenDatabaseAsync(Generic[AP], AccessTokenDatabase[AP]):
         if max_age is not None:
             statement = statement.where(self.access_token_model.created_at >= max_age)
 
-        results = await self.session.execute(statement)
+        results = await self.session.exec(statement)
         access_token = results.first()
         if access_token is None:
             return None
-        return access_token[0]
+        return access_token
 
     async def create(self, create_dict: Dict[str, Any]) -> AP:
         access_token = self.access_token_model(**create_dict)

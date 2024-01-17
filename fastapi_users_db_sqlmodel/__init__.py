@@ -5,9 +5,9 @@ from typing import TYPE_CHECKING, Any, Dict, Generic, Optional, Type
 from fastapi_users.db.base import BaseUserDatabase
 from fastapi_users.models import ID, OAP, UP
 from pydantic import UUID4, EmailStr
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlmodel import Field, Session, SQLModel, func, select
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 __version__ = "0.3.0"
 
@@ -174,11 +174,11 @@ class SQLModelUserDatabaseAsync(Generic[UP, ID], BaseUserDatabase[UP, ID]):
         statement = select(self.user_model).where(  # type: ignore
             func.lower(self.user_model.email) == func.lower(email)
         )
-        results = await self.session.execute(statement)
+        results = await self.session.exec(statement)
         object = results.first()
         if object is None:
             return None
-        return object[0]
+        return object
 
     async def get_by_oauth_account(self, oauth: str, account_id: str) -> Optional[UP]:
         """Get a single user by OAuth account id."""
@@ -190,10 +190,10 @@ class SQLModelUserDatabaseAsync(Generic[UP, ID], BaseUserDatabase[UP, ID]):
             .where(self.oauth_account_model.account_id == account_id)
             .options(selectinload(self.oauth_account_model.user))  # type: ignore
         )
-        results = await self.session.execute(statement)
+        results = await self.session.exec(statement)
         oauth_account = results.first()
         if oauth_account:
-            user = oauth_account[0].user  # type: ignore
+            user = oauth_account.user  # type: ignore
             return user
         return None
 
