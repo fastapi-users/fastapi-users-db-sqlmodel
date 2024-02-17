@@ -4,13 +4,14 @@ from typing import TYPE_CHECKING, Any, Dict, Generic, Optional, Type
 
 from fastapi_users.db.base import BaseUserDatabase
 from fastapi_users.models import ID, OAP, UP
-from pydantic import UUID4, EmailStr
+from pydantic import UUID4, EmailStr, ConfigDict
+from pydantic.version import VERSION as PYDANTIC_VERSION
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from sqlmodel import Field, Session, SQLModel, func, select
+from sqlmodel import Field, Session, SQLModel, func, select, AutoString
 
 __version__ = "0.3.0"
-
+PYDANTIC_V2 = PYDANTIC_VERSION.startswith("2.")
 
 class SQLModelBaseUserDB(SQLModel):
     __tablename__ = "user"
@@ -20,7 +21,8 @@ class SQLModelBaseUserDB(SQLModel):
         email: str
     else:
         email: EmailStr = Field(
-            sa_column_kwargs={"unique": True, "index": True}, nullable=False
+            sa_column_kwargs={"unique": True, "index": True}, nullable=False,
+            sa_type=AutoString
         )
     hashed_password: str
 
@@ -28,8 +30,12 @@ class SQLModelBaseUserDB(SQLModel):
     is_superuser: bool = Field(False, nullable=False)
     is_verified: bool = Field(False, nullable=False)
 
-    class Config:
-        orm_mode = True
+    if PYDANTIC_V2:  # pragma: no cover
+        model_config = ConfigDict(from_attributes=True)  # type: ignore
+    else:  # pragma: no cover
+
+        class Config:
+            orm_mode = True
 
 
 class SQLModelBaseOAuthAccount(SQLModel):
@@ -44,8 +50,12 @@ class SQLModelBaseOAuthAccount(SQLModel):
     account_id: str = Field(index=True, nullable=False)
     account_email: str = Field(nullable=False)
 
-    class Config:
-        orm_mode = True
+    if PYDANTIC_V2:
+        model_config = ConfigDict(from_attributes=True)  # type: ignore
+    else:
+
+        class Config:
+            orm_mode = True
 
 
 class SQLModelUserDatabase(Generic[UP, ID], BaseUserDatabase[UP, ID]):
