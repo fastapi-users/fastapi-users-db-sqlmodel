@@ -8,7 +8,7 @@ from pydantic import UUID4, EmailStr, ConfigDict
 from pydantic.version import VERSION as PYDANTIC_VERSION
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from sqlmodel import Field, Session, SQLModel, func, select
+from sqlmodel import Field, Session, SQLModel, func, select, AutoString
 
 __version__ = "0.3.0"
 PYDANTIC_V2 = PYDANTIC_VERSION.startswith("2.")
@@ -21,7 +21,8 @@ class SQLModelBaseUserDB(SQLModel):
         email: str
     else:
         email: EmailStr = Field(
-            sa_column_kwargs={"unique": True, "index": True}, nullable=False
+            sa_column_kwargs={"unique": True, "index": True}, nullable=False,
+            sa_type=AutoString
         )
     hashed_password: str
 
