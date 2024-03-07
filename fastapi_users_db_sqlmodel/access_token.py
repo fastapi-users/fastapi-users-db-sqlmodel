@@ -4,7 +4,7 @@ from typing import Any, Dict, Generic, Optional, Type
 from fastapi_users.authentication.strategy.db import AP, AccessTokenDatabase
 from pydantic import UUID4, ConfigDict
 from pydantic.version import VERSION as PYDANTIC_VERSION
-from sqlalchemy import Column, types
+from sqlalchemy import types
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import Field, Session, SQLModel, select
 
@@ -14,14 +14,12 @@ PYDANTIC_V2 = PYDANTIC_VERSION.startswith("2.")
 class SQLModelBaseAccessToken(SQLModel):
     __tablename__ = "accesstoken"
 
-    token: str = Field(
-        sa_column=Column("token", types.String(length=43), primary_key=True)
-    )
+    token: str = Field(sa_type=types.String(length=43), primary_key=True)
     created_at: datetime = Field(
         default_factory=now_utc,
-        sa_column=Column(
-            "created_at", TIMESTAMPAware(timezone=True), nullable=False, index=True
-        ),
+        sa_type=TIMESTAMPAware(timezone=True),
+        nullable=False,
+        index=True,
     )
     user_id: UUID4 = Field(foreign_key="user.id", nullable=False)
 
