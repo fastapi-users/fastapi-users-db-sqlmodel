@@ -1,17 +1,19 @@
 """FastAPI Users database adapter for SQLModel."""
+
 import uuid
 from typing import TYPE_CHECKING, Any, Dict, Generic, Optional, Type
 
 from fastapi_users.db.base import BaseUserDatabase
 from fastapi_users.models import ID, OAP, UP
-from pydantic import UUID4, EmailStr, ConfigDict
+from pydantic import UUID4, ConfigDict, EmailStr
 from pydantic.version import VERSION as PYDANTIC_VERSION
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from sqlmodel import Field, Session, SQLModel, func, select, AutoString
+from sqlmodel import AutoString, Field, Session, SQLModel, func, select
 
 __version__ = "0.3.0"
 PYDANTIC_V2 = PYDANTIC_VERSION.startswith("2.")
+
 
 class SQLModelBaseUserDB(SQLModel):
     __tablename__ = "user"
@@ -21,8 +23,9 @@ class SQLModelBaseUserDB(SQLModel):
         email: str
     else:
         email: EmailStr = Field(
-            sa_column_kwargs={"unique": True, "index": True}, nullable=False,
-            sa_type=AutoString
+            sa_column_kwargs={"unique": True, "index": True},
+            nullable=False,
+            sa_type=AutoString,
         )
     hashed_password: str
 
