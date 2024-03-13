@@ -74,7 +74,7 @@ classifiers = [
 ]
 requires-python = ">=3.7"
 dependencies = [
-    "fastapi-users >= 10.0.2",
+    "fastapi-users @ git+https://github.com/Ae-Mc/fastapi-users@add-refresh-token",
     "greenlet",
     "sqlmodel",
 ]
