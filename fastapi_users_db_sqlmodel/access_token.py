@@ -1,34 +1,70 @@
 from datetime import datetime
 from typing import Any, Dict, Generic, Optional, Type
 
-from fastapi_users.authentication.strategy.db import AP, AccessTokenDatabase
-from pydantic import UUID4
-from sqlalchemy import Column, types
+from fastapi_users.authentication.strategy.db import (
+    AP,
+    APE,
+    AccessRefreshTokenDatabase,
+    AccessTokenDatabase,
+)
+from fastapi_users.authentication.strategy.db.adapter import BaseAccessTokenDatabase
+from fastapi_users.authentication.strategy.db.models import (
+    AccessRefreshTokenProtocol,
+    AccessTokenProtocol,
+)
+from pydantic import UUID4, ConfigDict
+from pydantic.version import VERSION as PYDANTIC_VERSION
+from sqlalchemy import types
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import Field, Session, SQLModel, select
 
 from fastapi_users_db_sqlmodel.generics import TIMESTAMPAware, now_utc
 
+from . import SQLModelProtocolMetaclass
 
-class SQLModelBaseAccessToken(SQLModel):
-    __tablename__ = "accesstoken"
+PYDANTIC_V2 = PYDANTIC_VERSION.startswith("2.")
+
+
+class SQLModelBaseAccessToken(
+    SQLModel, AccessTokenProtocol, metaclass=SQLModelProtocolMetaclass
+):
+    __tablename__ = "accesstoken"  # type: ignore
 
     token: str = Field(
-        sa_column=Column("token", types.String(length=43), primary_key=True)
+        sa_type=types.String(length=43),  # type: ignore
+        primary_key=True,
     )
     created_at: datetime = Field(
         default_factory=now_utc,
-        sa_column=Column(
-            "created_at", TIMESTAMPAware(timezone=True), nullable=False, index=True
-        ),
+        sa_type=TIMESTAMPAware(timezone=True),  # type: ignore
+        nullable=False,
+        index=True,
     )
     user_id: UUID4 = Field(foreign_key="user.id", nullable=False)
 
-    class Config:
-        orm_mode = True
+    if PYDANTIC_V2:  # pragma: no cover
+        model_config = ConfigDict(from_attributes=True)  # type: ignore
+    else:  # pragma: no cover
+
+        class Config:
+            orm_mode = True
 
 
-class SQLModelAccessTokenDatabase(Generic[AP], AccessTokenDatabase[AP]):
+class SQLModelBaseAccessRefreshToken(
+    SQLModelBaseAccessToken,
+    AccessRefreshTokenProtocol,
+    metaclass=SQLModelProtocolMetaclass,
+):
+    __tablename__ = "accessrefreshtoken"
+
+    refresh_token: str = Field(
+        sa_type=types.String(length=43),  # type: ignore
+        unique=True,
+        index=True,
+    )
+
+
+class BaseSQLModelAccessTokenDatabase(Generic[AP], BaseAccessTokenDatabase[str, AP]):
     """
     Access token database adapter for SQLModel.
 
@@ -75,7 +111,47 @@ class SQLModelAccessTokenDatabase(Generic[AP], AccessTokenDatabase[AP]):
         self.session.commit()
 
 
-class SQLModelAccessTokenDatabaseAsync(Generic[AP], AccessTokenDatabase[AP]):
+class SQLModelAccessTokenDatabase(
+    Generic[AP], BaseSQLModelAccessTokenDatabase[AP], AccessTokenDatabase[AP]
+):
+    """
+    Access token database adapter for SQLModel.
+
+    :param session: SQLAlchemy session.
+    :param access_token_model: SQLModel access token model.
+    """
+
+
+class SQLModelAccessRefreshTokenDatabase(
+    Generic[APE], BaseSQLModelAccessTokenDatabase[APE], AccessRefreshTokenDatabase[APE]
+):
+    """
+    Access token database adapter for SQLModel.
+
+    :param session: SQLAlchemy session.
+    :param access_token_model: SQLModel access refresh token model.
+    """
+
+    async def get_by_refresh_token(
+        self, refresh_token: str, max_age: Optional[datetime] = None
+    ) -> Optional[APE]:
+        statement = select(self.access_token_model).where(  # type: ignore
+            self.access_token_model.refresh_token == refresh_token
+        )
+        if max_age is not None:
+            statement = statement.where(self.access_token_model.created_at >= max_age)
+
+        results = self.session.exec(statement)
+        access_token = results.first()
+        if access_token is None:
+            return None
+
+        return access_token
+
+
+class BaseSQLModelAccessTokenDatabaseAsync(
+    Generic[AP], BaseAccessTokenDatabase[str, AP]
+):
     """
     Access token database adapter for SQLModel working purely asynchronously.
 
@@ -120,3 +196,31 @@ class SQLModelAccessTokenDatabaseAsync(Generic[AP], AccessTokenDatabase[AP]):
     async def delete(self, access_token: AP) -> None:
         await self.session.delete(access_token)
         await self.session.commit()
+
+
+class SQLModelAccessTokenDatabaseAsync(
+    BaseSQLModelAccessTokenDatabaseAsync[AP], AccessTokenDatabase[AP], Generic[AP]
+):
+    pass
+
+
+class SQLModelAccessRefreshTokenDatabaseAsync(
+    BaseSQLModelAccessTokenDatabaseAsync[APE],
+    AccessRefreshTokenDatabase[APE],
+    Generic[APE],
+):
+    async def get_by_refresh_token(
+        self, refresh_token: str, max_age: Optional[datetime] = None
+    ) -> Optional[APE]:
+        statement = select(self.access_token_model).where(  # type: ignore
+            self.access_token_model.refresh_token == refresh_token
+        )
+        if max_age is not None:
+            statement = statement.where(self.access_token_model.created_at >= max_age)
+
+        results = await self.session.execute(statement)
+        access_token = results.first()
+        if access_token is None:
+            return None
+
+        return access_token[0]
