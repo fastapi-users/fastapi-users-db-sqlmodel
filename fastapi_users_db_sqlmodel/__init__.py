@@ -1,22 +1,32 @@
 """FastAPI Users database adapter for SQLModel."""
 
 import uuid
-from typing import TYPE_CHECKING, Any, Dict, Generic, Optional, Type
+from typing import TYPE_CHECKING, Any, Dict, Generic, Optional, Type, _ProtocolMeta
 
 from fastapi_users.db.base import BaseUserDatabase
-from fastapi_users.models import ID, OAP, UP
+from fastapi_users.models import (
+    ID,
+    UP,
+    OAuthAccountProtocol,
+    UserProtocol,
+)
 from pydantic import UUID4, ConfigDict, EmailStr
 from pydantic.version import VERSION as PYDANTIC_VERSION
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlmodel import AutoString, Field, Session, SQLModel, func, select
+from sqlmodel.main import SQLModelMetaclass
 
 __version__ = "0.3.0"
 PYDANTIC_V2 = PYDANTIC_VERSION.startswith("2.")
 
 
-class SQLModelBaseUserDB(SQLModel):
-    __tablename__ = "user"
+class SQLModelProtocolMetaclass(SQLModelMetaclass, _ProtocolMeta):
+    pass
+
+
+class SQLModelBaseUserDB(SQLModel, UserProtocol, metaclass=SQLModelProtocolMetaclass):
+    __tablename__ = "user"  # type: ignore
 
     id: UUID4 = Field(default_factory=uuid.uuid4, primary_key=True, nullable=False)
     if TYPE_CHECKING:  # pragma: no cover
@@ -41,8 +51,10 @@ class SQLModelBaseUserDB(SQLModel):
             orm_mode = True
 
 
-class SQLModelBaseOAuthAccount(SQLModel):
-    __tablename__ = "oauthaccount"
+class SQLModelBaseOAuthAccount(
+    SQLModel, OAuthAccountProtocol, metaclass=SQLModelProtocolMetaclass
+):
+    __tablename__ = "oauthaccount"  # type: ignore
 
     id: UUID4 = Field(default_factory=uuid.uuid4, primary_key=True)
     user_id: UUID4 = Field(foreign_key="user.id", nullable=False)
@@ -54,10 +66,11 @@ class SQLModelBaseOAuthAccount(SQLModel):
     account_email: str = Field(nullable=False)
 
     if PYDANTIC_V2:
+        # pragma: no cover
         model_config = ConfigDict(from_attributes=True)  # type: ignore
     else:
 
-        class Config:
+        class Config:  # pragma: no cover
             orm_mode = True
 
 
@@ -143,7 +156,7 @@ class SQLModelUserDatabase(Generic[UP, ID], BaseUserDatabase[UP, ID]):
         return user
 
     async def update_oauth_account(
-        self, user: UP, oauth_account: OAP, update_dict: Dict[str, Any]
+        self, user: UP, oauth_account: OAuthAccountProtocol, update_dict: Dict[str, Any]
     ) -> UP:
         if self.oauth_account_model is None:
             raise NotImplementedError()
@@ -243,7 +256,7 @@ class SQLModelUserDatabaseAsync(Generic[UP, ID], BaseUserDatabase[UP, ID]):
         return user
 
     async def update_oauth_account(
-        self, user: UP, oauth_account: OAP, update_dict: Dict[str, Any]
+        self, user: UP, oauth_account: OAuthAccountProtocol, update_dict: Dict[str, Any]
     ) -> UP:
         if self.oauth_account_model is None:
             raise NotImplementedError()
