@@ -12,14 +12,21 @@ from sqlmodel import Session, SQLModel, create_engine
 
 from fastapi_users_db_sqlmodel import SQLModelUserDatabase, SQLModelUserDatabaseAsync
 from fastapi_users_db_sqlmodel.access_token import (
+    SQLModelAccessRefreshTokenDatabase,
+    SQLModelAccessRefreshTokenDatabaseAsync,
     SQLModelAccessTokenDatabase,
     SQLModelAccessTokenDatabaseAsync,
+    SQLModelBaseAccessRefreshToken,
     SQLModelBaseAccessToken,
 )
 from tests.conftest import User
 
 
 class AccessToken(SQLModelBaseAccessToken, table=True):
+    pass
+
+
+class AccessRefreshToken(SQLModelBaseAccessRefreshToken, table=True):
     pass
 
 
@@ -38,10 +45,10 @@ async def init_sync_session(url: str) -> AsyncGenerator[Session, None]:
 
 async def init_async_session(url: str) -> AsyncGenerator[AsyncSession, None]:
     engine = create_async_engine(url, connect_args={"check_same_thread": False})
-    make_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    make_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)  # type: ignore
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
-        async with make_session() as session:
+        async with make_session() as session:  # type: ignore
             yield session
         await conn.run_sync(SQLModel.metadata.drop_all)
 
@@ -80,6 +87,42 @@ async def sqlmodel_access_token_db(
             }
         )
         yield access_token_database_class(session, AccessToken)
+
+
+@pytest_asyncio.fixture(
+    params=[
+        (
+            init_sync_session,
+            "sqlite:///./test-sqlmodel-access-refresh-token.db",
+            SQLModelAccessRefreshTokenDatabase,
+            SQLModelUserDatabase,
+        ),
+        (
+            init_async_session,
+            "sqlite+aiosqlite:///./test-sqlmodel-access-refresh-token.db",
+            SQLModelAccessRefreshTokenDatabaseAsync,
+            SQLModelUserDatabaseAsync,
+        ),
+    ],
+    ids=["sync_refresh", "async_refresh"],
+)
+async def sqlmodel_access_refresh_token_db(
+    request, user_id: UUID4
+) -> AsyncGenerator[SQLModelAccessRefreshTokenDatabase, None]:
+    create_session = request.param[0]
+    database_url = request.param[1]
+    access_token_database_class = request.param[2]
+    user_database_class = request.param[3]
+    async for session in create_session(database_url):
+        user_db = user_database_class(session, User)
+        await user_db.create(
+            {
+                "id": user_id,
+                "email": "lancelot@camelot.bt",
+                "hashed_password": "guinevere",
+            }
+        )
+        yield access_token_database_class(session, AccessRefreshToken)
 
 
 @pytest.mark.asyncio
@@ -140,6 +183,107 @@ async def test_insert_existing_token(
     sqlmodel_access_token_db: SQLModelAccessTokenDatabase[AccessToken], user_id: UUID4
 ):
     access_token_create = {"token": "TOKEN", "user_id": user_id}
+    await sqlmodel_access_token_db.create(access_token_create)
+
+    with pytest.raises(exc.IntegrityError):
+        await sqlmodel_access_token_db.create(access_token_create)
+
+
+@pytest.mark.asyncio
+async def test_refresh_queries(
+    sqlmodel_access_refresh_token_db: SQLModelAccessRefreshTokenDatabase[
+        AccessRefreshToken
+    ],
+    user_id: UUID4,
+):
+    access_token_create = {
+        "token": "TOKEN",
+        "refresh_token": "REFRESH",
+        "user_id": user_id,
+    }
+
+    # Create
+    access_token = await sqlmodel_access_refresh_token_db.create(access_token_create)
+    assert access_token.token == "TOKEN"
+    assert access_token.refresh_token == "REFRESH"
+    assert access_token.user_id == user_id
+
+    # Update
+    update_dict = {"created_at": datetime.now(timezone.utc)}
+    updated_access_token = await sqlmodel_access_refresh_token_db.update(
+        access_token, update_dict
+    )
+    assert updated_access_token.created_at.replace(microsecond=0) == update_dict[
+        "created_at"
+    ].replace(microsecond=0)
+
+    # Get by refresh token
+    access_token_by_token = await sqlmodel_access_refresh_token_db.get_by_refresh_token(
+        access_token.refresh_token
+    )
+    assert access_token_by_token is not None
+
+    # Get by refresh token expired
+    access_token_by_token = await sqlmodel_access_refresh_token_db.get_by_refresh_token(
+        access_token.refresh_token,
+        max_age=datetime.now(timezone.utc) + timedelta(hours=1),
+    )
+    assert access_token_by_token is None
+
+    # Get by refresh token not expired
+    access_token_by_token = await sqlmodel_access_refresh_token_db.get_by_refresh_token(
+        access_token.refresh_token,
+        max_age=datetime.now(timezone.utc) - timedelta(hours=1),
+    )
+
+    # Get by refresh token unknown
+    access_token_by_token = await sqlmodel_access_refresh_token_db.get_by_refresh_token(
+        "NOT_EXISTING_TOKEN"
+    )
+    assert access_token_by_token is None
+
+    # Get by token
+    access_token_by_token = await sqlmodel_access_refresh_token_db.get_by_token(
+        access_token.token
+    )
+    assert access_token_by_token is not None
+
+    # Get by token expired
+    access_token_by_token = await sqlmodel_access_refresh_token_db.get_by_token(
+        access_token.token, max_age=datetime.now(timezone.utc) + timedelta(hours=1)
+    )
+    assert access_token_by_token is None
+
+    # Get by token not expired
+    access_token_by_token = await sqlmodel_access_refresh_token_db.get_by_token(
+        access_token.token, max_age=datetime.now(timezone.utc) - timedelta(hours=1)
+    )
+    assert access_token_by_token is not None
+
+    # Get by token unknown
+    access_token_by_token = await sqlmodel_access_refresh_token_db.get_by_token(
+        "NOT_EXISTING_TOKEN"
+    )
+    assert access_token_by_token is None
+
+    # Delete token
+    await sqlmodel_access_refresh_token_db.delete(access_token)
+    deleted_access_token = await sqlmodel_access_refresh_token_db.get_by_token(
+        access_token.token
+    )
+    assert deleted_access_token is None
+
+
+@pytest.mark.asyncio
+async def test_insert_existing_token_refresh(
+    sqlmodel_access_token_db: SQLModelAccessRefreshTokenDatabase[AccessRefreshToken],
+    user_id: UUID4,
+):
+    access_token_create = {
+        "token": "TOKEN",
+        "refresh_token": "REFRESH",
+        "user_id": user_id,
+    }
     await sqlmodel_access_token_db.create(access_token_create)
 
     with pytest.raises(exc.IntegrityError):
